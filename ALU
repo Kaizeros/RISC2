@@ -1,0 +1,69 @@
+`timescale 1ns / 1ps
+
+module ALU (
+	input logic [31:0] in1, in2,
+	input logic [3:0]  alu_control,
+	output logic [31:0] alu_result,
+	output logic zero_flag
+);
+
+	// Using intermediate variables for the sub-byte math to prevent simulation glitches
+	logic [7:0] sum8;
+	logic [16:0] sum16; // 17 bits to safely catch intermediate math if needed
+
+	always_comb begin
+		// Pre-calculate sub-word additions to simplify the case statement
+		sum8  = in1[7:0]  + in2[7:0];
+		sum16 = in1[15:0] + in2[15:0];
+        
+		// Default assignment to avoid synthesis latches
+		alu_result = 32'h0;
+
+		case(alu_control)
+			4'b0000: alu_result = in1 & in2;
+			4'b0001: alu_result = in1 | in2;
+			4'b0010: alu_result = in1 + in2;
+			4'b0100: alu_result = in1 - in2;
+			4'b1000: alu_result = (in1 < in2) ? 32'h1 : 32'h0;
+			4'b0011: alu_result = in1 << in2;
+			4'b0101: alu_result = in1 >> in2;
+			4'b0110: alu_result = in1 * in2;
+			4'b0111: alu_result = in1 ^ in2;
+            
+			// 4'b1001: 8-bit add with sign-extend (LB/LBU helper)
+			4'b1001: begin
+				if (sum8[7] == 1'b1)
+					alu_result = {24'hffffff, sum8};
+				else
+					alu_result = {24'h000000, sum8};
+            end
+            
+			// 4'b1010: 16-bit add with sign-extend (LH/LHU helper)
+			4'b1010: begin
+				if (sum16[15] == 1'b1)
+					alu_result = {16'hffff, sum16[15:0]};
+				else
+					alu_result = {16'h0000, sum16[15:0]};
+            end
+            
+            // 4'b1011: 8-bit add zero-extended
+            4'b1011: alu_result = {24'h000000, sum8};
+            
+            // 4'b1100: 16-bit add zero-extended
+            4'b1100: alu_result = {16'h0000, sum16[15:0]};
+            
+            // Shifts using proper register limits
+            4'b1101: alu_result = in1 >> in2[4:0];
+            4'b1110: alu_result = in1 >>> in2[4:0]; // Arithmetic right shift
+            4'b1111: alu_result = in1 << in2[4:0];
+            
+            default: alu_result = 32'h0;
+        endcase
+
+        // Setting Zero_flag if ALU_result is zero
+        if (alu_result == 32'h0)
+            zero_flag = 1'b1;
+        else
+            zero_flag = 1'b0;
+    end
+endmodule 
