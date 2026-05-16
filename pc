@@ -1,0 +1,18 @@
+//32-bit program counter
+//Asynchronous reset pc module
+module pc(
+	input logic clk,
+	input logic rst_n, // Active-low reset
+	input logic [31:0] pc_in, // The "Next PC" (usually PC + 4)
+	output logic [31:0] pc_out // The "Current PC" (points to memory)
+);
+
+always_ff @(posedge clk or negedge rst_n) 
+	begin
+		if (!rst_n) 
+			pc_out <= 32'h0; // Start at the beginning of memory
+		else 
+	pc_out <= pc_in; // Move to the next address
+end
+
+endmodule 
