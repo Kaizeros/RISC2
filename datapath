@@ -1,0 +1,75 @@
+`timescale 1ns / 1ps
+
+module datapath(
+	input logic clock,
+	input logic reset,
+    
+    // Control Unit Command Signals (The "Traffic Cop" Switches)
+	input logic regwrite,       // 1 = Enable Register File writes
+	input logic alu_src,        // 0 = Source 2 is Register, 1 = Source 2 is Immediate
+	input logic [3:0] alu_control,    // Operation selection for the ALU
+	input logic mem_to_reg,     // 0 = Writeback ALU result, 1 = Writeback Memory data
+    
+	// Bit Slices pulled directly from the fetched Instruction Word
+	input logic [4:0] read_reg_num1,  // rs1 field (instruction[19:15])
+	input logic [4:0] read_reg_num2,  // rs2 field (instruction[24:20])
+	input logic [4:0] write_reg,      // rd field  (instruction[11:7])
+	input logic [11:0] imm_bits,       // Immediate data vector (instruction[31:20] or branch slice)
+    
+	// Memory Interface (Data Highway going to data_mem)
+	input logic [31:0] mem_read_data,  // Raw incoming data loaded out of RAM
+	output logic [31:0] mem_write_data, // Data going out to be stored into RAM
+	output logic [31:0] alu_result,     // The calculated math result (also used as RAM address)
+    
+	// Status Feedback Loops out to the System Controller
+	output logic zero_flag,
+	output logic [31:0] branch_offset   // Unscrambled, expanded offset sent out for branch calculations
+);
+
+	// Internal structural routing wires
+	logic [31:0] read_data1;
+	logic [31:0] read_data2;
+	logic [31:0] write_data;
+	logic [31:0] alu_in2;
+
+	// Direct Route: What is sitting in register rs2 always drives the RAM data input
+	assign mem_write_data = read_data2;
+
+	// 1. THE STORAGE ENGINE: REGISTER FILE
+	Register my_reg_file (
+		.clock(clock),
+		.reset(reset),
+		.regwrite(regwrite),
+		.read_reg_num1(read_reg_num1),
+		.read_reg_num2(read_reg_num2),
+		.write_reg(write_reg),
+		.write_data(write_data),         // Routed from the Writeback Mux below
+		.read_data1(read_data1),         // Feeds ALU input 1 directly
+		.read_data2(read_data2)          // Feeds ALU input 2 Mux
+	);
+
+	// 2. THE TRANSLATOR: SIGN EXTENDER
+	sign_ext my_sign_extender (
+		.i(imm_bits),
+		.extended(branch_offset)        // Feeds ALU input 2 Mux and PC branch logic
+	);
+
+	// 3. VISUAL SCHEMATIC BOX: INLINE ALU SOURCE MULTIPLEXER (Mux)
+	// If alu_src is 0, pass register data. If alu_src is 1, pass immediate offset.
+	assign alu_in2 = (alu_src == 1'b1) ? branch_offset : read_data2;
+
+	// 4. THE EXECUTION ENGINE: ARITHMETIC LOGIC UNIT (ALU)
+	// Dynamically handles addition, subtraction, and complex shifting natively
+	ALU my_brainpiece (
+		.in1(read_data1),
+		.in2(alu_in2),
+		.alu_control(alu_control),
+		.alu_result(alu_result),
+		.zero_flag(zero_flag)
+	);
+
+	// 5. VISUAL SCHEMATIC BOX: INLINE WRITEBACK MULTIPLEXER (Mux)
+	// If mem_to_reg is 1, pipe data from RAM. If 0, pipe data straight from ALU calculation.
+	assign write_data = (mem_to_reg == 1'b1) ? mem_read_data : alu_result;
+
+endmodule 
