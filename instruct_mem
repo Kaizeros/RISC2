@@ -7,7 +7,7 @@ module instruct_mem (
 
     initial begin
         // Reads "instructions.txt" and loads it into the 'rom' array at startup
-        $readmemh("./instructions.txt", rom);
+        $readmemh("./instructions.txt", rom); //in the qsim or modelsim file
     end
 
     // Word-aligned reading (divide byte-address by 4)
