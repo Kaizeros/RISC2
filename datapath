@@ -14,7 +14,7 @@ module datapath(
 	input logic [4:0] read_reg_num1,  // rs1 field (instruction[19:15])
 	input logic [4:0] read_reg_num2,  // rs2 field (instruction[24:20])
 	input logic [4:0] write_reg,      // rd field  (instruction[11:7])
-	input logic [11:0] imm_bits,       // Immediate data vector (instruction[31:20] or branch slice)
+	input logic [31:0] full_instruction,       // Immediate data vector (instruction[31:20] or branch slice)
     
 	// Memory Interface (Data Highway going to data_mem)
 	input logic [31:0] mem_read_data,  // Raw incoming data loaded out of RAM
@@ -50,7 +50,7 @@ module datapath(
 
 	// 2. THE TRANSLATOR: SIGN EXTENDER
 	sign_ext my_sign_extender (
-		.i(imm_bits),
+		.inst(full_instruction),
 		.extended(branch_offset)        // Feeds ALU input 2 Mux and PC branch logic
 	);
 
