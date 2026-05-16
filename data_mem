@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module data_mem (
     input  logic        clk,
     input  logic        mem_write_en, // 1 = Write (Store Word), 0 = Read (Load Word)
@@ -7,20 +9,22 @@ module data_mem (
 );
 
     logic [31:0] ram [0:63];
+    logic [29:0] word_address;
+    
+    assign word_address = address[31:2];
 
     initial begin
-        // Pre-initialize our RAM variables from a text file
-        $readmemh("./data_init.txt", ram); //in the qsim or modelsim file
+        $readmemh("./data_init.txt", ram); 
     end
 
-    // Sequential Write: Writes happen on the rising edge of the clock
-    always_ff @(posedge clk) begin    // <-- Opens always_ff
-        if (mem_write_en) begin       // <-- Opens if statement
-            ram[address[31:2]] <= write_data;
-        end                           // <-- Closes if statement
-    end                               // <-- Closes always_ff
+    always_ff @(posedge clk) begin    
+        if (mem_write_en) begin       
+            if (word_address < 64) begin
+                ram[word_address] <= write_data;
+            end
+        end                           
+    end                               
 
-    // Combinational Read: Continuous readout of the targeted address (Safe outside!)
-    assign read_data = ram[address[31:2]];
-
+    // Clean, normal synthesizable readout
+    assign read_data = (word_address < 64) ? ram[word_address] : 32'h00000000; 
 endmodule 
