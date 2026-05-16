@@ -1,0 +1,150 @@
+`timescale 1ns / 1ps
+
+module Toplevel(
+    input  logic        clk,
+    input  logic        rst_n,          // Active-low master reset
+    input  logic        start_signal,   // Kicks off execution
+    output logic [2:0]  current_state,  // For debugging via testbench
+    output logic        done_flag,
+    output logic [31:0] debug_alu_out   // Let's output this so our testbench can see math results!
+);
+
+    // =========================================================================
+    // INTERNAL WIRES & REGISTERS
+    // =========================================================================
+    logic [31:0] PC;
+    logic [31:0] next_PC;               // Wire calculating the targeted next instruction address
+    logic [31:0] instruction;
+    logic [31:0] ram_read_data;
+    logic [31:0] ram_write_data;
+    logic [31:0] alu_result;
+    logic [31:0] branch_offset;
+    logic        zero_flag;
+
+    // Stable Address Register to isolate the RAM array from combinational 'X' states
+    logic [31:0] mem_address_reg; 
+
+    // Control Bus Routing Tracks
+    logic        regwrite;
+    logic        alu_src;
+    logic [3:0]  alu_control;
+    logic        mem_to_reg;
+    logic        mem_write_en;
+    logic        pc_control;        // 0 = Normal path (PC+4), 1 = Branch/Jump path
+    logic [2:0]  fsm_state;
+
+    // Direct routing assignments for testbench monitoring
+    assign debug_alu_out = alu_result;
+    assign current_state = fsm_state;
+
+    // =========================================================================
+    // DYNAMIC NEXT PC CALCULATION LOGIC (With J-TYPE JAL Immediate Override)
+    // =========================================================================
+    logic [31:0] jal_immediate;
+    logic [31:0] actual_offset;
+
+    // Reconstruct the standard RISC-V J-type immediate sign-extension layout:
+    // Slices bits: [20] from instruction[31], [10:1] from [30:21], [11] from [20], [19:12] from [19:12]
+    // Followed by a hardcoded 0 at bit 0 because jumps are half-word aligned (multiples of 2)
+    assign jal_immediate = { {12{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0 };
+
+    // Select the target offset bus track dynamically:
+    // If the active opcode is JAL (7'b1101111), use our explicit manual J-immediate vector.
+    // Otherwise, fall back on the standard branch_offset route from the datapath.
+    assign actual_offset = (instruction[6:0] == 7'b1101111) ? jal_immediate : branch_offset;
+
+    // Calculate the targeted next PC location safely using signed arithmetic operations
+    assign next_PC = (pc_control == 1'b1) ? (PC + $signed(actual_offset)) : (PC + 4);
+
+    // Program Counter Sequential Register Block
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            PC <= 32'h00000000;
+        end else if (start_signal) begin
+            PC <= next_PC; // Advance tracking dynamically using multiplexed path
+        end
+    end
+
+    // =========================================================================
+    // SEQUENTIAL ADDRESS STABILIZATION REGISTER
+    // =========================================================================
+    // Latches the ALU output onto a synchronous boundary. This keeps the address 
+    // stable at 0 during startup resets, and holds the active value firm throughout 
+    // clock periods, blocking any uninitialized combinational hazard states.
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            mem_address_reg <= 32'h00000000;
+        end else begin
+            mem_address_reg <= alu_result;
+        end
+    end
+
+    // =========================================================================
+    // CORE SYSTEM COMPONENT INSTANTIATIONS
+    // =========================================================================
+
+    // 1. System Brain: Finite State Machine Control Unit
+    controller system_brain (
+        .clk(clk),
+        .reset(rst_n),
+        .opcode(instruction[6:0]),     // Slice opcode bits directly from memory data
+        .funct3(instruction[14:12]),   // Slice funct3 field
+        .funct7(instruction[31:25]),   // Slice funct7 field
+        .zero({alu_result[31], zero_flag}), // Arithmetic flag loop feedback from ALU
+        
+        // Control Bus Wire Drive Attachments
+        .alu_control(alu_control),
+        .regwrite(regwrite),
+        .alu_src(alu_src),
+        .mem_to_reg(mem_to_reg),
+        .mem_write_en(mem_write_en),
+        .pc_control(pc_control),
+        
+        // Tracking state
+        .current_state(fsm_state)
+    );
+
+    // 2. Instruction Memory (Driven by our dynamic Program Counter address)
+    instruct_mem my_instruction_memory (
+        .read_address(PC),
+        .instruction(instruction)
+    );
+
+    // 3. System Muscle Pipeline: The Unified Datapath Core
+    datapath my_pipeline_datapath (
+        .clock(clk),
+        .reset(rst_n),
+        .regwrite(regwrite),
+        .alu_src(alu_src),
+        .alu_control(alu_control),
+        .mem_to_reg(mem_to_reg),
+        
+        // Bits sliced automatically from instruction word
+        .read_reg_num1(instruction[19:15]), // rs1
+        .read_reg_num2(instruction[24:20]), // rs2
+        .write_reg(instruction[11:7]),      // rd
+        .full_instruction(instruction),     // raw immediate field array
+        
+        // Data highway bus links
+        .mem_read_data(ram_read_data),
+        .mem_write_data(ram_write_data),
+        .alu_result(alu_result),
+        
+        // Feedback loop links back out to Control Core
+        .zero_flag(zero_flag),
+        .branch_offset(branch_offset)
+    );
+
+    // 4. Data Storage Memory (RAM File Block)
+    data_mem my_data_ram (
+        .clk(clk),
+        .mem_write_en(mem_write_en),
+        .address(mem_address_reg),  // Linked to our register to keep the line green!
+        .write_data(ram_write_data),
+        .read_data(ram_read_data)
+    );
+
+    // Done signal asserts when FSM settles back into FETCH to begin anew
+    assign done_flag = (fsm_state == 3'b000) ? 1'b1 : 1'b0;
+
+endmodule 
