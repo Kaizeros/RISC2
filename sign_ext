@@ -1,27 +1,30 @@
 `timescale 1ns / 1ps
 
-module sign_ext(
-	output reg [31:0] extended,
-	input [11:0] i
+module sign_ext (
+    input  logic [31:0] inst,         // Pass the full 32-bit instruction word
+    output logic [31:0] extended
 );
 
-	// Wire to cleanly hold the reconstructed 13-bit branch offset
-	wire [12:0] temp;
+    logic [6:0] opcode;
+    assign opcode = inst[6:0];        // Extract opcode to check the instruction type
 
-	// Unscramble the RISC-V B-type immediate format
-	assign temp = {i[11], i[0], i[10:1], 1'b0};
-
-	// Combinational block using blocking assignments (=)
-	always @(*) begin
-		// Check the actual sign bit, which is index 12 of our 13-bit number!
-		if (temp[12] == 1'b1) begin
-			// Sign-extend with 1s (32 bits total = 19 bits of 1s + 13 bits of temp)
-			extended = {19'b1111111111111111111, temp};
-		end
-		else begin
-			// Sign-extend with 0s (32 bits total = 19 bits of 0s + 13 bits of temp)
-			extended = {19'b0000000000000000000, temp};
-		end
-	end
+    always_comb begin
+        case (opcode)
+            // I-Type Instructions (ADDI, ORI, Load Word, etc.)
+            7'b0010011, 7'b0000011: begin
+                extended = {{20{inst[31]}}, inst[31:20]};
+            end
+            
+            // S-Type Instructions (Store Word, Store Byte, etc.)
+            7'b0100011: begin
+                extended = {{20{inst[31]}}, inst[31:25], inst[11:7]};
+            end
+            
+            // Default fallback to prevent latches
+            default: begin
+                extended = 32'h00000000;
+            end
+        endcase
+    end
 
 endmodule 
