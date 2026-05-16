@@ -1,0 +1,98 @@
+`timescale 1ns / 1ps
+
+module Toplevel(
+    input  logic        clk,
+    input  logic        rst_n,          // Active-low master reset
+    input  logic        start_signal,   // Kicks off execution
+    output logic [2:0]  current_state,  // For debugging via testbench
+    output logic        done_flag,
+    output logic [31:0] debug_alu_out   // Let's output this so our testbench can see math results!
+);
+
+    // =========================================================================
+    // INTERNAL WIRES & REGISTERS
+    // =========================================================================
+    logic [31:0] PC;
+    logic [31:0] instruction;
+    logic [31:0] ram_read_data;
+    logic [31:0] ram_write_data;
+    logic [31:0] alu_result;
+    logic [31:0] branch_offset;
+    logic        zero_flag;
+
+    // Direct routing to the output port for testbench visibility
+    assign debug_alu_out = alu_result;
+
+    // =========================================================================
+    // TEMPORARY HARDWIRED CONTROL LOGIC (Until we build the formal FSM)
+    // =========================================================================
+    // Let's hardwire these control signals for a basic R-type operation (like ADD)
+    // so we can test if our blocks pass data through the highway properly!
+    logic        regwrite;
+    logic        alu_src;
+    logic [3:0]  alu_control;
+    logic        mem_to_reg;
+    logic        mem_write_en;
+
+    always_comb begin
+        regwrite     = 1'b1;     // Enable writing back to registers
+        alu_src      = 1'b0;     // Pull source 2 from Register File (not immediate)
+        alu_control  = 4'b0010;  // Force ALU to perform ADD (+)
+        mem_to_reg   = 1'b0;     // Writeback the ALU result to the registers
+        mem_write_en = 1'b0;     // Keep RAM writes disabled for now
+    end
+
+    // Simple Program Counter Logic: Steps forward 4 bytes every clock tick
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            PC <= 32'h00000000;
+            current_state <= 3'b000;
+            done_flag     <= 1'b0;
+        end else if (start_signal) begin
+            PC <= PC + 4;
+            current_state <= 3'b001; // Mock State 1: Execute
+        end
+    end
+
+    // =========================================================================
+    // CORE MACRO-BLOCK INSTANTIATIONS
+    // =========================================================================
+
+    // 1. Instruction Memory (Driven by our PC)
+    instruct_mem my_instruction_memory (
+        .read_address(PC),
+        .instruction(instruction)
+    );
+
+    // 2. The Integrated Datapath (Swallows ALU, Registers, and Sign Extender)
+    datapath my_pipeline_datapath (
+        .clock(clk),
+        .reset(rst_n),
+        .regwrite(regwrite),
+        .alu_src(alu_src),
+        .alu_control(alu_control),
+        .mem_to_reg(mem_to_reg),
+        // Slicing the instruction bits automatically!
+        .read_reg_num1(instruction[19:15]), // rs1
+        .read_reg_num2(instruction[24:20]), // rs2
+        .write_reg(instruction[11:7]),    // rd
+        .imm_bits(instruction[31:20]),     // raw immediate bits
+        // Memory bus links
+        .mem_read_data(ram_read_data),
+        .mem_write_data(ram_write_data),
+        .alu_result(alu_result),
+        // Feedback status loops
+        .zero_flag(zero_flag),
+        .branch_offset(branch_offset)
+    );
+
+    // 3. Data Memory (RAM)
+    data_mem my_data_ram (
+        .clk(clk),
+        .mem_write_en(mem_write_en),
+        .address(alu_result), // ALU output acts as the memory address pointer
+        .write_data(ram_write_data),
+        .read_data(ram_read_data)
+    );
+
+endmodule 
