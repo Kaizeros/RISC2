@@ -1,0 +1,16 @@
+module instruct_mem (
+    input  logic [31:0] read_address,
+    output logic [31:0] instruction
+);
+
+    logic [31:0] rom [0:63];
+
+    initial begin
+        // Reads "instructions.txt" and loads it into the 'rom' array at startup
+        $readmemh("./instructions.txt", rom);
+    end
+
+    // Word-aligned reading (divide byte-address by 4)
+    assign instruction = rom[read_address[31:2]];
+
+endmodule 
