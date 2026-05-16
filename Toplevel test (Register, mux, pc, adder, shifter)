@@ -1,0 +1,81 @@
+module Toplevel (
+// Inputs: Driven by your Testbench
+	input logic clk,
+	input logic rst_n,
+	input logic start_signal,
+	 
+	//Register Input
+	input logic reg_write_en,      // New input to trigger a write
+	input logic [31:0] write_data, // New input for the data to save
+	input logic [4:0]  write_reg_addr, // Added this so you can choose WHERE to write
+	 
+	//mux logic
+	input logic [31:0] mux_in_a, mux_in_b,
+	input logic mux_sel,
+	output logic [31:0] mux_out,	
+	 
+	// Outputs: Observed in the Waveform/Logic Analyzer
+	output logic [2:0] current_state, // Helpful for debugging your 6-state machine
+	output logic done_flag,
+	output logic [31:0] data_out,        // Changed to 32-bit to match Register output
+	
+	//Point Control
+	input  logic [31:0] toplevel_pc_in,
+	output logic [31:0] toplevel_pc_out,
+	
+	//adder logic
+	input logic [31:0] toplevel_add_a,
+	input logic [31:0] toplevel_add_b,
+	output logic [31:0] toplevel_add_sum,
+	 
+	//shifter logic 
+	input logic [31:0] toplevel_shift_in,		//change data_in
+	input logic [4:0]  toplevel_shift_amt, 	
+	input logic toplevel_shift_sel, 			
+	output logic [31:0] toplevel_shift_out		//change data_out
+);
+
+    // Your logic or sub-module instantiation goes here...
+	Register my_reg_file (
+        .clock(clk),
+        .reset(!rst_n), 
+        .regwrite(reg_write_en),    // Connected to top-level input
+        .write_data(write_data),    // Connected to top-level input
+        .write_reg(write_reg_addr), // Connected to top-level input
+        .read_reg_num1(5'b00001),   // Reading Reg 1 (the one with '23')
+        .read_reg_num2(5'b00010),
+        .read_data1(data_out),      // Sending data out to the waveform
+        .read_data2()
+    );
+	 
+	 //MUX test
+	 mux2 my_mux (
+        .a(mux_in_a),
+        .b(mux_in_b),
+        .sel(mux_sel),
+        .y(mux_out)
+    );
+	 
+	 //pc test
+	 pc my_program_counter (
+        .clk(clk),
+        .rst_n(rst_n),           // Directly maps active-low to active-low!
+        .pc_in(toplevel_pc_in),   // Connected to top-level input
+        .pc_out(toplevel_pc_out)  // Connected to top-level output
+    );
+	 
+	 //adder test
+    adder my_adder (
+        .a(toplevel_add_a),
+        .b(toplevel_add_b),
+        .sum(toplevel_add_sum)
+    );
+
+    //shifter test
+    shifter my_shifter (
+        .data_in(toplevel_shift_in),
+        .shift_amount(toplevel_shift_amt),
+        .left_right_sel(toplevel_shift_sel),
+        .data_out(toplevel_shift_out)
+    );
+endmodule 
