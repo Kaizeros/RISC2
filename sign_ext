@@ -1,0 +1,27 @@
+`timescale 1ns / 1ps
+
+module sign_ext(
+	output reg [31:0] extended,
+	input [11:0] i
+);
+
+	// Wire to cleanly hold the reconstructed 13-bit branch offset
+	wire [12:0] temp;
+
+	// Unscramble the RISC-V B-type immediate format
+	assign temp = {i[11], i[0], i[10:1], 1'b0};
+
+	// Combinational block using blocking assignments (=)
+	always @(*) begin
+		// Check the actual sign bit, which is index 12 of our 13-bit number!
+		if (temp[12] == 1'b1) begin
+			// Sign-extend with 1s (32 bits total = 19 bits of 1s + 13 bits of temp)
+			extended = {19'b1111111111111111111, temp};
+		end
+		else begin
+			// Sign-extend with 0s (32 bits total = 19 bits of 0s + 13 bits of temp)
+			extended = {19'b0000000000000000000, temp};
+		end
+	end
+
+endmodule 
