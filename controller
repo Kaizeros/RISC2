@@ -1,0 +1,153 @@
+`timescale 1ns / 1ps
+
+module controller(
+    input  logic        clk,
+    input  logic        reset,       
+    input  logic [6:0]  opcode,
+    input  logic [2:0]  funct3,
+    input  logic [6:0]  funct7,
+    input  logic [1:0]  zero,        // [1] = Sign Bit, [0] = Zero Flag
+    
+    output logic [3:0]  alu_control,
+    output logic        regwrite,    
+    output logic        alu_src,     
+    output logic        mem_to_reg,  
+    output logic        mem_write_en,
+    output logic        pc_control,  
+    output logic [2:0]  current_state
+);
+
+    logic sign_bit;
+    logic zero_flag;
+    assign sign_bit  = zero[1];
+    assign zero_flag = zero[0];
+
+    typedef enum logic [2:0] {
+        FETCH  = 3'b000,
+        DECODE = 3'b001,
+        EXEC   = 3'b010,
+        MEM_WB = 3'b011
+    } state_t;
+
+    state_t state_reg, next_state;
+
+    always_ff @(posedge clk or negedge reset) begin
+        if (!reset)
+            state_reg <= FETCH;
+        else
+            state_reg <= next_state;
+    end
+
+    always_comb begin
+        case (state_reg)
+            FETCH:  next_state = DECODE;
+            DECODE: next_state = EXEC;
+            EXEC:   next_state = MEM_WB;
+            MEM_WB: next_state = FETCH;
+            default: next_state = FETCH;
+        endcase
+    end
+
+    always_comb begin
+        alu_control   = 4'b0000;
+        regwrite      = 1'b0;
+        alu_src       = 1'b0;
+        mem_to_reg    = 1'b0;
+        mem_write_en  = 1'b0;
+        pc_control    = 1'b0; 
+        current_state = state_reg;
+
+        case (state_reg)
+            FETCH: begin
+            end
+
+            DECODE: begin
+            end
+
+            EXEC: begin
+                // R-TYPE
+                if (opcode == 7'b0110011) begin 
+                    alu_src = 1'b0;
+                    case (funct3)
+                        3'd0: alu_control = (funct7 == 7'd32) ? 4'b0100 : 4'b0010; // SUB : ADD
+                        3'd6: alu_control = 4'b0001; // OR
+                        3'd7: alu_control = 4'b0000; // AND
+                        3'd1: alu_control = 4'b0011; // SLL
+                        3'd5: alu_control = 4'b0101; // SRL
+                        3'd4: alu_control = 4'b0111; // XOR
+                        default: alu_control = 4'b0010;
+                    endcase
+                end
+
+                // I-TYPE ARITHMETIC
+                else if (opcode == 7'b0010011) begin 
+                    alu_src = 1'b1;
+                    case (funct3)
+                        3'd0: alu_control = 4'b0010; // ADDI
+                        3'd6: alu_control = 4'b0001; // ORI
+                        3'd7: alu_control = 4'b0000; // ANDI
+                        3'd4: alu_control = 4'b0111; // XORI
+                        default: alu_control = 4'b0010;
+                    endcase
+                end
+
+                // I-TYPE LOAD
+                else if (opcode == 7'b0000011) begin 
+                    alu_src = 1'b1;
+                    alu_control = 4'b0010;
+                end
+
+                // S-TYPE STORE
+                else if (opcode == 7'b0100011) begin 
+                    alu_src = 1'b1;
+                    alu_control = 4'b0010;
+                end
+
+                // B-TYPE BRANCH INSTRUCTIONS
+                else if (opcode == 7'b1100011) begin
+                    alu_src = 1'b0;        
+                    alu_control = 4'b0100; // SUB
+                    case (funct3)
+                        3'd0: pc_control = (zero_flag == 1'b1) ? 1'b1 : 1'b0; // BEQ
+                        3'd1: pc_control = (zero_flag == 1'b0) ? 1'b1 : 1'b0; // BNE
+                        3'd5: pc_control = (zero_flag == 1'b1 || sign_bit == 1'b0) ? 1'b1 : 1'b0; // BGE
+                        default: pc_control = 1'b0;
+                    endcase
+                end
+
+                // J-TYPE JUMP
+                else if (opcode == 7'b1101111) begin
+                    pc_control = 1'b1;
+                end
+            end
+
+            MEM_WB: begin
+                // Retain pc_control tracking status during writeback state execution loop
+                if (opcode == 7'b1101111) begin
+                    pc_control = 1'b1;
+                end
+                else if (opcode == 7'b1100011) begin
+                    case (funct3)
+                        3'd0: pc_control = (zero_flag == 1'b1) ? 1'b1 : 1'b0;
+                        3'd1: pc_control = (zero_flag == 1'b0) ? 1'b1 : 1'b0;
+                        3'd5: pc_control = (zero_flag == 1'b1 || sign_bit == 1'b0) ? 1'b1 : 1'b0;
+                        default: pc_control = 1'b0;
+                    endcase
+                end
+
+                if (opcode == 7'b0110011 || opcode == 7'b0010011 || opcode == 7'b1101111) begin
+                    regwrite   = 1'b1;
+                    mem_to_reg = 1'b0;
+                end 
+                else if (opcode == 7'b0000011) begin
+                    regwrite   = 1'b1;
+                    mem_to_reg = 1'b1;
+                end
+                else if (opcode == 7'b0100011) begin
+                    mem_write_en = 1'b1;
+                end
+            end
+        endcase
+    end
+
+endmodule 
