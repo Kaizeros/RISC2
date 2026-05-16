@@ -1,0 +1,25 @@
+module adder (
+	input  logic [31:0] a,
+	input  logic [31:0] b,
+	output logic [31:0] sum
+);
+
+	assign sum = a + b;
+
+endmodule
+
+module shifter (
+	input logic [31:0] data_in,			// The 32-bit value to shift
+	input logic [4:0]  shift_amount, 	// How many bits to shift (0 to 31)
+	input logic left_right_sel, 			// 0 = Shift Left, 1 = Shift Right
+	output logic [31:0] data_out
+);
+
+	always_comb begin
+		if (left_right_sel == 1'b0)
+			data_out = data_in << shift_amount; // Logical Left Shift
+		else
+			data_out = data_in >> shift_amount; // Logical Right Shift
+	end
+
+endmodule 
