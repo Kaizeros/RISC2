@@ -1,0 +1,72 @@
+module Toplevel (
+    // Master Inputs
+    input logic clk,
+    input logic rst_n,
+    input logic start_signal,
+    
+    // Master Outputs / State Machine Debugging
+    output logic [2:0] current_state, 
+    output logic       done_flag,
+
+    // Register File Pins (Kept for routing data later)
+    input  logic        reg_write_en,      
+    input  logic [31:0] write_data, 
+    input  logic [4:0]  write_reg_addr, 
+    output logic [31:0] data_out,        
+
+    // --- NEW: ALU Test Pins ---
+    input  logic [31:0] toplevel_alu_in1,
+    input  logic [31:0] toplevel_alu_in2,
+    input  logic [3:0]  toplevel_alu_ctrl,
+    output logic [31:0] toplevel_alu_out,
+    output logic        toplevel_alu_zero,
+	 
+	 //intstructmem
+	 input  logic [31:0] toplevel_imem_addr,
+    output logic [31:0] toplevel_imem_instr,
+	 
+	 //datamem
+    input  logic toplevel_mem_write_en, // 1 = Write (Store Word), 0 = Read (Load Word)
+    input  logic [31:0] toplevel_address,
+    input  logic [31:0] toplevel_write_data,
+    output logic [31:0] toplevel_read_data
+);
+
+    // 1. Register File Instance (Maintained)
+    Register my_reg_file (
+        .clock(clk),
+        .reset(!rst_n), 
+        .regwrite(reg_write_en),    
+        .write_data(write_data),    
+        .write_reg(write_reg_addr), 
+        .read_reg_num1(5'b00001),   
+        .read_reg_num2(5'b00010),
+        .read_data1(data_out),      
+        .read_data2()
+    );
+     
+    // 2. Brand New ALU Instance
+    ALU my_brainpiece (
+        .in1(toplevel_alu_in1),
+        .in2(toplevel_alu_in2),
+        .alu_control(toplevel_alu_ctrl),
+        .alu_result(toplevel_alu_out),
+        .zero_flag(toplevel_alu_zero)
+    );
+	 
+	 //3.instrumem
+	 instruct_mem my_instructions (
+		.read_address(toplevel_imem_addr),
+		.instruction(toplevel_imem_instr)
+    );
+	 
+	 //4.data_mem
+	 data_mem my_data (
+		.clk(clk),
+		.mem_write_en(toplevel_mem_write_en), // 1 = Write (Store Word), 0 = Read (Load Word)
+		.address(toplevel_address),
+		.write_data(toplevel_write_data),
+		.read_data(toplevel_read_data)
+	 );
+
+endmodule 
