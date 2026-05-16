@@ -1,0 +1,51 @@
+`timescale 1ns / 1ps
+
+module Toplevel_tb;
+
+    // Testbench registers/wires to drive the CPU inputs
+    logic clk;
+    logic rst_n;
+    logic start_signal;
+    
+    logic [2:0]  current_state;
+    logic        done_flag;
+    logic [31:0] debug_alu_out;
+
+    // Instantiate the complete Toplevel design (Device Under Test)
+    Toplevel dut (
+        .clk(clk),
+        .rst_n(rst_n),
+        .start_signal(start_signal),
+        .current_state(current_state),
+        .done_flag(done_flag),
+        .debug_alu_out(debug_alu_out)
+    );
+
+    // Generate a continuous clock signal (Inverts every 10ns = 50MHz Clock)
+    always #10 clk = ~clk;
+
+    // Stimulus process
+    initial begin
+        // Step 1: Initialize signals and apply reset
+        clk = 0;
+        rst_n = 0; // CPU is frozen in reset state
+        start_signal = 0;
+        
+        #40; // Hold reset for 40 ns
+        
+        // Step 2: Release reset
+        rst_n = 1; // CPU wakes up
+        
+        #20;
+        
+        // Step 3: Assert the start signal to begin execution
+        start_signal = 1;
+        
+        // Let it run autonomously for 500 ns to step through instruction lines!
+        #500;
+        
+        // Pause simulation to check results
+        $stop;
+    end
+
+endmodule 
